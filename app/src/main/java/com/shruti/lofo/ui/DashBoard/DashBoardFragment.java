@@ -1,6 +1,9 @@
 package com.shruti.lofo.ui.DashBoard;
 
+import static android.content.Context.MODE_PRIVATE;
+
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -16,20 +19,13 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.denzcoskun.imageslider.ImageSlider;
 import com.denzcoskun.imageslider.constants.ScaleTypes;
 import com.denzcoskun.imageslider.models.SlideModel;
-import com.google.android.gms.tasks.OnFailureListener;
-import com.google.android.gms.tasks.OnSuccessListener;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.firestore.CollectionReference;
-import com.google.firebase.firestore.DocumentReference;
-import com.google.firebase.firestore.DocumentSnapshot;
-import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.Query;
-import com.google.firebase.firestore.QueryDocumentSnapshot;
+import com.shruti.lofo.LocalStore;
 import com.shruti.lofo.R;
 import com.shruti.lofo.databinding.FragmentDashboardBinding;
 import com.shruti.lofo.ui.Found.FoundDetails;
+import com.shruti.lofo.ui.Found.FoundItems;
 import com.shruti.lofo.ui.Lost.LostDetails;
+import com.shruti.lofo.ui.Lost.LostItems;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -37,32 +33,27 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 public class DashBoardFragment extends Fragment {
     private FragmentDashboardBinding binding;
     private ArrayList<DashBoardViewModel> arr_recent_lofo;
     private RecyclerRecentLoFoAdapter adapter;
-    private FirebaseFirestore db;
 
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         binding = FragmentDashboardBinding.inflate(inflater, container, false);
         View root = binding.getRoot();
 
-        //image sliderc
+        //image slider
         ImageSlider imageSlider = root.findViewById(R.id.imageSlider);
         ArrayList<SlideModel> slideModels = new ArrayList<>();
 
         slideModels.add(new SlideModel(R.drawable.dashboard_img1, ScaleTypes.FIT));
         slideModels.add(new SlideModel(R.drawable.dashboard_img2, ScaleTypes.FIT));
-//        slideModels.add(new SlideModel(R.drawable.dashboard_img3, ScaleTypes.FIT));
-//        slideModels.add(new SlideModel(R.drawable.dashboard_img4, ScaleTypes.FIT));
 
         imageSlider.setImageList(slideModels, ScaleTypes.FIT);
 
-
-
         RecyclerView recentLostFoundList = root.findViewById(R.id.recent_lost_found_list);
-//        recentLostFoundList.setLayoutManager(new LinearLayoutManager(requireContext()));
 
         arr_recent_lofo = new ArrayList<>();
 
@@ -71,97 +62,12 @@ public class DashBoardFragment extends Fragment {
         adapter = new RecyclerRecentLoFoAdapter(requireContext(), arr_recent_lofo);
         recentLostFoundList.setAdapter(adapter);
 
-        db = FirebaseFirestore.getInstance();
-
-        // Query the 'lostItems' collection
-        Query lostItemsQuery = db.collection("lostItems");
-
-        // Query the 'foundItems' collection
-        Query foundItemsQuery = db.collection("foundItems");
-
-        // Execute the queries for both lost and found items
-        lostItemsQuery.get().addOnSuccessListener(lostItemsSnapshot -> {
-            foundItemsQuery.get().addOnSuccessListener(foundItemsSnapshot -> {
-                // Create a list to store the combined items
-                List<DocumentSnapshot> mergedItems = new ArrayList<>();
-
-                // Add all lost and found items to the mergedItems list
-                mergedItems.addAll(lostItemsSnapshot.getDocuments());
-                mergedItems.addAll(foundItemsSnapshot.getDocuments());
-
-                // Sort the merged items by date in descending order
-                Collections.sort(mergedItems, (o1, o2) -> {
-                    String dateLostString1 = o1.getString("dateLost");
-                    String dateFoundString1 = o1.getString("dateFound");
-                    String dateLostString2 = o2.getString("dateLost");
-                    String dateFoundString2 = o2.getString("dateFound");
-
-                    SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yyyy");
-                    Date date1 = null;
-                    Date date2 = null;
-
-                    if (dateLostString1 != null) {
-                        try {
-                            date1 = dateFormat.parse(dateLostString1);
-                        } catch (ParseException e) {
-                            e.printStackTrace();
-                        }
-                    } else if (dateFoundString1 != null) {
-                        try {
-                            date1 = dateFormat.parse(dateFoundString1);
-                        } catch (ParseException e) {
-                            e.printStackTrace();
-                        }
-                    }
-
-                    if (dateLostString2 != null) {
-                        try {
-                            date2 = dateFormat.parse(dateLostString2);
-                        } catch (ParseException e) {
-                            e.printStackTrace();
-                        }
-                    } else if (dateFoundString2 != null) {
-                        try {
-                            date2 = dateFormat.parse(dateFoundString2);
-                        } catch (ParseException e) {
-                            e.printStackTrace();
-                        }
-                    }
-
-                    if (date1 != null && date2 != null) {
-                        return date2.compareTo(date1);
-                    } else if (date1 != null) {
-                        return -1;
-                    } else if (date2 != null) {
-                        return 1;
-                    }
-                    return 0;
-                });
-
-                // Limit the list to 5 items
-                if (mergedItems.size() > 10) {
-                    mergedItems = mergedItems.subList(0, 10);
-                }
-
-                // Now, you have the top 5 most recent items from both collections in descending order
-                for (DocumentSnapshot item : mergedItems) {
-                    DashBoardViewModel lofo = item.toObject(DashBoardViewModel.class);
-                    if (lofo != null) {
-                        arr_recent_lofo.add(lofo);
-                    }
-                }
-                adapter.notifyDataSetChanged();
-            });
-        });
-
-
+        loadLocalData();
 
         adapter.setOnItemClickListener(new RecyclerRecentLoFoAdapter.OnItemClickListener() {
             @Override
             public void onItemClick(DashBoardViewModel item) {
-                // Handle the item click here
                 String selectedItemName = item.getItemName();
-                // Create an Intent and navigate to LostDetails activity with the selected item name
                 Intent intent;
                 if(item.getTag().equalsIgnoreCase("lost")) {
                     intent = new Intent(requireContext(), LostDetails.class);
@@ -175,37 +81,92 @@ public class DashBoardFragment extends Fragment {
             }
         });
 
-//        recentLostFoundList.setAdapter(adapter);
-        // Get the currently logged in user
-        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
-        TextView userName = root.findViewById(R.id.userName); // Replace with your TextView's ID
+        // User Info from Local Preferences
+        TextView userName = root.findViewById(R.id.userName);
+        SharedPreferences loginPrefs = requireContext().getSharedPreferences("loginPrefs", MODE_PRIVATE);
+        String currentUserEmail = loginPrefs.getString("currentUser", "");
 
-        if (user != null) {
-            String email = user.getEmail(); // Get the user's email
-
-            FirebaseFirestore db = FirebaseFirestore.getInstance();
-            CollectionReference usersCollectionRef = db.collection("users");
-
-            Query query = usersCollectionRef.whereEqualTo("email", email);
-
-            query.get().addOnCompleteListener(task -> {
-                if (task.isSuccessful()) {
-                    for (QueryDocumentSnapshot document : task.getResult()) {
-                        String name = document.getString("name");
-                        if (name != null) {
-                            userName.setText(name); // Set the user's name in the TextView
-                        }
-                    }
-                } else {
-                    Log.d("FirebaseDebug", "Error getting documents: ", task.getException());
-                }
-            });
+        if (!currentUserEmail.isEmpty()) {
+            SharedPreferences userPrefs = requireContext().getSharedPreferences("UserPrefs", MODE_PRIVATE);
+            String name = userPrefs.getString(currentUserEmail + "_name", "User");
+            userName.setText(name);
         } else {
-            Log.d("FirebaseDebug", "No user currently logged in.");
+            userName.setText("Guest");
         }
 
-
         return root;
+    }
+
+    private void loadLocalData() {
+        LocalStore localStore = new LocalStore(requireContext());
+        List<LostItems> lostItems = localStore.getLostItems();
+        List<FoundItems> foundItems = localStore.getFoundItems();
+        
+        arr_recent_lofo.clear();
+
+        // Convert LostItems to DashBoardViewModel
+        for (LostItems item : lostItems) {
+             DashBoardViewModel model = new DashBoardViewModel(
+                 item.getImageURI(),
+                 item.getCategory(),
+                 item.getDescription(),
+                 item.getOwnerName(),
+                 null, // finderName
+                 "lost",
+                 item.getDateLost(),
+                 item.getItemName(),
+                 null // dateFound
+             );
+             arr_recent_lofo.add(model);
+        }
+
+        // Convert FoundItems to DashBoardViewModel
+        for (FoundItems item : foundItems) {
+             DashBoardViewModel model = new DashBoardViewModel(
+                 item.getImageURI(),
+                 item.getCategory(),
+                 item.getDescription(),
+                 null, // ownerName
+                 item.getfinderName(),
+                 "found",
+                 null, // dateLost
+                 item.getItemName(),
+                 item.getDateFound()
+             );
+             arr_recent_lofo.add(model);
+        }
+
+        // Sort by Date
+        Collections.sort(arr_recent_lofo, (o1, o2) -> {
+            String date1Str = o1.getDateLost() != null ? o1.getDateLost() : o1.getDateFound();
+            String date2Str = o2.getDateLost() != null ? o2.getDateLost() : o2.getDateFound();
+            
+            SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()); // Assuming format d/M/yyyy from fragment
+            Date date1 = null;
+            Date date2 = null;
+
+            try {
+                if (date1Str != null) date1 = dateFormat.parse(date1Str);
+                if (date2Str != null) date2 = dateFormat.parse(date2Str);
+            } catch (ParseException e) {
+                e.printStackTrace();
+            }
+
+            if (date1 != null && date2 != null) {
+                return date2.compareTo(date1); // Descending
+            }
+            return 0;
+        });
+
+        // Limit to 10
+        if (arr_recent_lofo.size() > 10) {
+            // Create a sublist or just remove elements
+             ArrayList<DashBoardViewModel> subList = new ArrayList<>(arr_recent_lofo.subList(0, 10));
+             arr_recent_lofo.clear();
+             arr_recent_lofo.addAll(subList);
+        }
+
+        adapter.notifyDataSetChanged();
     }
 
     @Override

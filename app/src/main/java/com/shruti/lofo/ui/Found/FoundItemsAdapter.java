@@ -10,36 +10,29 @@ import android.view.ViewGroup;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
+
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
-import com.firebase.ui.firestore.FirestoreRecyclerAdapter;
-import com.firebase.ui.firestore.FirestoreRecyclerOptions;
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.shruti.lofo.R;
-import com.shruti.lofo.Utility;
 
+import java.util.List;
 
-public class FoundItemsAdapter extends FirestoreRecyclerAdapter<FoundItems, FoundItemsAdapter.ItemViewHolder> {
+public class FoundItemsAdapter extends RecyclerView.Adapter<FoundItemsAdapter.ItemViewHolder> {
 
     Context context;
     boolean showDeleteButton;
-    private String category;
+    private List<FoundItems> items;
 
-
-
-    public FoundItemsAdapter(@NonNull FirestoreRecyclerOptions<FoundItems> options, Context context, String category,  boolean showDeleteButton) {
-        super(options);
+    public FoundItemsAdapter(Context context, List<FoundItems> items, boolean showDeleteButton) {
         this.context = context;
-        this.category = category;
-        this.showDeleteButton=showDeleteButton;
+        this.items = items;
+        this.showDeleteButton = showDeleteButton;
     }
 
-    public void setCategory(String category) {
-        this.category = category;
-    }
-
-    public String getCategory() {
-        return category;
+    public void setItems(List<FoundItems> items) {
+        this.items = items;
+        notifyDataSetChanged();
     }
 
     @NonNull
@@ -50,50 +43,41 @@ public class FoundItemsAdapter extends FirestoreRecyclerAdapter<FoundItems, Foun
     }
 
     @Override
-    protected void onBindViewHolder(@NonNull ItemViewHolder holder, int position, @NonNull FoundItems item) {
-      if(category.isEmpty() || item.getCategory().equals(category))  {
-            if (item.getImageURI() != null && !item.getImageURI().isEmpty()) {
-                Glide.with(context)
-                        .load(item.getImageURI())
-                        .placeholder(R.drawable.placeholder_image) // Add a placeholder image while the actual image is loading
-                        .error(R.drawable.baseline_image_search_24) // Add an error image if the image fails to load
-                        .into(holder.itemImageView);
-            }
-            holder.itemNameTextView.setText(item.getItemName());
-            holder.finderNameTextView.setText(item.getfinderName());
-            holder.description.setText(item.getDescription());
-            holder.location.setText(item.getLocation());
-            holder.date.setText(item.getDateFound());
+    public void onBindViewHolder(@NonNull ItemViewHolder holder, int position) {
+        FoundItems item = items.get(position);
 
-            // Set an onClickListener for the card view
-            holder.itemView.setOnClickListener(v -> {
-                // Create an Intent to start the LostDetails activity
-                Intent intent = new Intent(context, FoundDetails.class);
-
-                // Pass the itemId as an extra to the intent
-                intent.putExtra("itemId", item.getItemName());
-
-                // Start the LostDetails activity
-                context.startActivity(intent);
-            });
-
-          if (showDeleteButton && (category.isEmpty() || item.getCategory().equals(category))) {
-              // Additional logic for the delete button
-              holder.deleteButton.setVisibility(View.VISIBLE);
-
-              holder.deleteButton.setOnClickListener(v -> {
-                  String documentId = getSnapshots().getSnapshot(position).getId();
-                  Utility.getCollectionReferrenceForFound().document(documentId).delete()
-                          .addOnSuccessListener(aVoid -> {
-                              // Item deleted successfully, update the UI or perform other tasks if needed
-                          })
-                          .addOnFailureListener(e -> {
-                              // An error occurred, handle the error appropriately
-                          });
-              });
-          }
-
+        if (item.getImageURI() != null && !item.getImageURI().isEmpty()) {
+            Glide.with(context)
+                    .load(item.getImageURI())
+                    .placeholder(R.drawable.placeholder_image)
+                    .error(R.drawable.baseline_image_search_24)
+                    .into(holder.itemImageView);
         }
+        holder.itemNameTextView.setText(item.getItemName());
+        holder.finderNameTextView.setText(item.getfinderName());
+        holder.description.setText(item.getDescription());
+        holder.location.setText(item.getLocation());
+        holder.date.setText(item.getDateFound());
+
+        holder.itemView.setOnClickListener(v -> {
+            Intent intent = new Intent(context, FoundDetails.class);
+            intent.putExtra("itemId", item.getItemName());
+            context.startActivity(intent);
+        });
+
+        if (showDeleteButton) {
+            holder.deleteButton.setVisibility(View.VISIBLE);
+            holder.deleteButton.setOnClickListener(v -> {
+                Toast.makeText(context, "Delete not implemented locally yet", Toast.LENGTH_SHORT).show();
+            });
+        } else {
+            holder.deleteButton.setVisibility(View.GONE);
+        }
+    }
+
+    @Override
+    public int getItemCount() {
+        return items != null ? items.size() : 0;
     }
 
     static class ItemViewHolder extends RecyclerView.ViewHolder {
@@ -105,18 +89,15 @@ public class FoundItemsAdapter extends FirestoreRecyclerAdapter<FoundItems, Foun
         TextView date;
         ImageButton deleteButton;
 
-
         public ItemViewHolder(@NonNull View itemView) {
             super(itemView);
             itemImageView = itemView.findViewById(R.id.itemImageView);
             itemNameTextView = itemView.findViewById(R.id.itemNameTextView);
             finderNameTextView = itemView.findViewById(R.id.finderNameTextView);
-            description= itemView.findViewById(R.id.item_description);
+            description = itemView.findViewById(R.id.item_description);
             location = itemView.findViewById((R.id.location));
             date = itemView.findViewById(R.id.dateFound);
-            deleteButton= itemView.findViewById(R.id.deleteButton);
-
+            deleteButton = itemView.findViewById(R.id.deleteButton);
         }
     }
 }
-

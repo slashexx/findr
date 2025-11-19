@@ -1,23 +1,20 @@
 package com.shruti.lofo.ui.MyProfile;
 
+import static android.content.Context.MODE_PRIVATE;
+
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.TextView;
 
 import androidx.fragment.app.Fragment;
 
-import com.google.firebase.firestore.DocumentSnapshot;
-import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseUser;
 import com.shruti.lofo.R;
 
 public class MyProfileFragment extends Fragment {
     TextView profileName, profileEmail, profilePhone, titleName;
-    FirebaseFirestore database;
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -27,35 +24,33 @@ public class MyProfileFragment extends Fragment {
         profilePhone = root.findViewById(R.id.profilephone);
         titleName = root.findViewById(R.id.titlename);
 
-        database = FirebaseFirestore.getInstance();
-
         fetchUserData();
         return root;
     }
 
     private void fetchUserData() {
-        FirebaseAuth auth = FirebaseAuth.getInstance();
-        FirebaseUser currentUser = auth.getCurrentUser();
+        if (getContext() == null) return;
 
-        String userEmail = currentUser.getEmail();
-        database.collection("users")
-                .whereEqualTo("email", userEmail)
-                .get()
-                .addOnSuccessListener(queryDocumentSnapshots -> {
-                    for (DocumentSnapshot documentSnapshot : queryDocumentSnapshots) {
-                        String nameFromDB = documentSnapshot.getString("name");
-                        String emailFromDB = documentSnapshot.getString("email");
-                        String phoneFromDB = documentSnapshot.getString("phone");
+        SharedPreferences loginPrefs = getContext().getSharedPreferences("loginPrefs", MODE_PRIVATE);
+        String currentUserEmail = loginPrefs.getString("currentUser", "");
 
-                        // Set retrieved data to TextViews
-                        titleName.setText(nameFromDB);
-                        profileName.setText(nameFromDB);
-                        profileEmail.setText(emailFromDB);
-                        profilePhone.setText(phoneFromDB);
-                    }
-                })
-                .addOnFailureListener(e -> {
+        if (!currentUserEmail.isEmpty()) {
+            SharedPreferences userPrefs = getContext().getSharedPreferences("UserPrefs", MODE_PRIVATE);
+            
+            String name = userPrefs.getString(currentUserEmail + "_name", "N/A");
+            String phone = userPrefs.getString(currentUserEmail + "_phone", "N/A");
+            String email = currentUserEmail;
 
-                });
+            // Set retrieved data to TextViews
+            titleName.setText(name);
+            profileName.setText(name);
+            profileEmail.setText(email);
+            profilePhone.setText(phone);
+        } else {
+            titleName.setText("Guest");
+            profileName.setText("Guest");
+            profileEmail.setText("N/A");
+            profilePhone.setText("N/A");
+        }
     }
 }
