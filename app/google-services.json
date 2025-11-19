@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "535307867647",
+    "project_id": "scribesphere-000",
+    "storage_bucket": "scribesphere-000.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:535307867647:android:5b08bcb50e71cceeee43ca",
+        "android_client_info": {
+          "package_name": "com.findr.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWmi4KZsz3W3ZXKTeX0jQDlHjIj005m0U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
