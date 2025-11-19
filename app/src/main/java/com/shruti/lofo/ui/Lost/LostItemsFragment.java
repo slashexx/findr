@@ -1,24 +1,19 @@
 package com.shruti.lofo.ui.Lost;
 
 import static android.app.Activity.RESULT_OK;
-import static android.content.ContentValues.TAG;
+import static android.content.Context.MODE_PRIVATE;
 
 import android.app.DatePickerDialog;
 import android.app.Dialog;
 import android.app.TimePickerDialog;
+import android.content.Context;
 import android.content.Intent;
-
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.QueryDocumentSnapshot;
-import com.google.firebase.storage.FirebaseStorage;
-import com.google.firebase.storage.StorageReference;
-
+import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.MediaStore;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -35,17 +30,15 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.DialogFragment;
 
-import com.shruti.lofo.OnImageUploadCallback;
+import com.shruti.lofo.LocalStore;
+import com.shruti.lofo.R;
 import com.shruti.lofo.Utility;
 
-import com.google.firebase.firestore.DocumentReference;
-import com.shruti.lofo.R;
-
-import java.text.SimpleDateFormat;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Calendar;
-import java.util.Date;
-import java.util.Locale;
-
 
 public class LostItemsFragment extends DialogFragment {
     private ImageButton datePickerButton;
@@ -63,7 +56,6 @@ public class LostItemsFragment extends DialogFragment {
     private EditText location ;
 
     final int REQ_CODE=1000;
-    String imageUrl;
     private int mYear, mMonth, mDay, mHour, mMinute;
     String date = null;
     String time = null;
@@ -186,92 +178,78 @@ public class LostItemsFragment extends DialogFragment {
             lostItem.setLocation(location.getText().toString());
             lostItem.setDescription(description.getText().toString());
 
-            FirebaseAuth mAuth = FirebaseAuth.getInstance();
-            FirebaseUser currentUser = mAuth.getCurrentUser();
-            FirebaseFirestore db = FirebaseFirestore.getInstance();
+            // Get User Info from Local Preferences
+            SharedPreferences loginPrefs = requireContext().getSharedPreferences("loginPrefs", MODE_PRIVATE);
+            String currentUserEmail = loginPrefs.getString("currentUser", "");
 
-            if (currentUser != null) {
-                String userEmail = currentUser.getEmail();
-                String userID = currentUser.getUid();
-
-                // Query the user collection for the current user's details based on their email
-                db.collection("users")
-                        .whereEqualTo("email", userEmail)
-                        .get()
-                        .addOnCompleteListener(task -> {
-                            if (task.isSuccessful()) {
-                                for (QueryDocumentSnapshot document : task.getResult()) {
-                                    // Retrieve the user's name and phone number from the document
-                                    String userName = document.getString("name");
-                                    String userPhone = document.getString("phone");
-                                    lostItem.setOwnerName(userName);
-                                    lostItem.setPhnum(Long.valueOf(userPhone));
-                                    lostItem.setEmail(userEmail);
-                                    lostItem.setUserId(userID);
-                                }
-                            } else {
-                                Log.d(TAG, "Error getting documents: ", task.getException());
-                            }
-                        });
+            if (!currentUserEmail.isEmpty()) {
+                SharedPreferences userPrefs = requireContext().getSharedPreferences("UserPrefs", MODE_PRIVATE);
+                String name = userPrefs.getString(currentUserEmail + "_name", "Unknown");
+                String phone = userPrefs.getString(currentUserEmail + "_phone", "0");
+                
+                lostItem.setOwnerName(name);
+                try {
+                    lostItem.setPhnum(Long.valueOf(phone));
+                } catch (NumberFormatException e) {
+                    lostItem.setPhnum(0L);
+                }
+                lostItem.setEmail(currentUserEmail);
+                lostItem.setUserId(currentUserEmail);
             }
 
-            saveItemToFirebase(lostItem);
+             // Save Image Locally
+            String imagePath = saveImageToInternalStorage(imageUri);
+            if (imagePath != null) {
+                lostItem.setImageURI(imagePath);
+                
+                // Save Item to Local Store
+                LocalStore localStore = new LocalStore(requireContext());
+                localStore.saveLostItem(lostItem);
+                
+                Utility.showToast(getContext(), "Item added locally!");
+                dismiss();
+            } else {
+                 // Try saving item even if image fails (or is default)
+                if (imageUri.toString().contains("android.resource")) {
+                     lostItem.setImageURI(imageUri.toString());
+                     LocalStore localStore = new LocalStore(requireContext());
+                     localStore.saveLostItem(lostItem);
+                     Utility.showToast(getContext(), "Item added locally (default image)!");
+                     dismiss();
+                } else {
+                    Utility.showToast(getContext(), "Failed to save image locally");
+                }
+            }
 
         });
 
     }
-    private String generateImageName() {
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-        return "image_" + timeStamp + ".jpg";
-    }
-    private void saveImageToFirebaseStorage(Uri imageUri, OnImageUploadCallback callback) {
+    
+    private String saveImageToInternalStorage(Uri uri) {
+        // Handle resource URIs differently or just return null/uri string
+        if (uri.toString().startsWith("android.resource")) {
+            return uri.toString();
+        }
 
-        String imageName = generateImageName();
-        StorageReference storageReference = FirebaseStorage.getInstance().getReference().child("images/" + imageName);
-
-        storageReference.putFile(imageUri)
-                .addOnSuccessListener(taskSnapshot -> {
-                    storageReference.getDownloadUrl().addOnSuccessListener(uri -> {
-                        String imageUrl = uri.toString();
-                        callback.onSuccess(imageUrl);
-                    });
-                })
-                .addOnFailureListener(e -> {
-                    // Handle any errors that may occur during the upload
-                    callback.onFailure();
-                });
-    }
-
-
-    private void saveItemToFirebase(LostItems item) {
         try {
-            saveImageToFirebaseStorage(imageUri, new OnImageUploadCallback() {
-                @Override
-                public void onSuccess(String imageUrl) {
-                    item.setImageURI(imageUrl);
-                    DocumentReference documentReference = Utility.getCollectionReferrenceForItems2().document();
-                    documentReference.set(item).addOnCompleteListener(task -> {
-                        if (task.isSuccessful()) {
-                            Utility.showToast(getContext(), "Item added successfully");
-                            dismiss();
-                        } else {
-                            Utility.showToast(getContext(), "Failed to add item");
-                            dismiss();
-                        }
-                    });
-                }
-
-                @Override
-                public void onFailure() {
-                    Utility.showToast(getContext(), "An error occurred while uploading the image");
-                }
-            });
-        } catch (Exception e) {
+            InputStream inputStream = requireContext().getContentResolver().openInputStream(uri);
+            Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
+            
+            Context context = requireContext();
+            String filename = "lost_" + System.currentTimeMillis() + ".jpg";
+            File file = new File(context.getFilesDir(), filename);
+            
+            FileOutputStream outputStream = new FileOutputStream(file);
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream);
+            outputStream.flush();
+            outputStream.close();
+            
+            return file.getAbsolutePath();
+        } catch (IOException e) {
             e.printStackTrace();
-            Utility.showToast(getContext(), "An error occurred while saving data");
+            return null;
         }
     }
-
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
